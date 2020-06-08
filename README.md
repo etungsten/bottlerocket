@@ -276,6 +276,8 @@ The following settings are set for you automatically by [pluto](sources/api/) ba
 * `settings.updates.metadata-base-url`: The common portion of all URIs used to download update metadata.
 * `settings.updates.targets-base-url`: The common portion of all URIs used to download update files.
 * `settings.updates.seed`: A `u32` value that determines how far into in the update schedule this machine will accept an update.  We recommending leaving this at its default generated value so that updates can be somewhat randomized in your cluster.
+* `settings.updates.version-lock`: Specifies the version to update to when updating the OS via the API.
+* `settings.updates.ignore-waves`: Specifies whether to ignore update waves when updating the OS via the API.
 
 #### Time settings
 
