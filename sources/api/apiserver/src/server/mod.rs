@@ -12,6 +12,7 @@ use actix_web::{
 use bottlerocket_release::BottlerocketRelease;
 use error::Result;
 use futures::future;
+use http::StatusCode;
 use log::info;
 use model::{ConfigurationFiles, Model, Services, Settings};
 use nix::unistd::{chown, Gid};
@@ -25,6 +26,9 @@ use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::Command;
 use std::sync;
+use thar_be_updates::error::TbuErrorStatus;
+use thar_be_updates::status::UpdateStatus;
+use num::FromPrimitive;
 
 // =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=
 
@@ -116,7 +120,23 @@ where
                 web::scope("/configuration-files")
                     .route("", web::get().to(get_configuration_files)),
             )
-            .service(web::scope("/actions").route("/reboot", web::post().to(reboot)))
+            .service(
+                web::scope("/actions")
+                    .route("/reboot", web::post().to(reboot))
+                    .route("/refresh-update", web::post().to(refresh_update))
+                    .route("/prepare-update", web::post().to(prepare_update))
+                    .route("/activate-update", web::post().to(activate_update))
+                    .route("/deactivate-update", web::post().to(deactivate_update)),
+            )
+            .service(
+                web::scope("/updates")
+                    .route("/status", web::get().to(get_update_status))
+                    .route("/available", web::get().to(get_available_updates))
+                    .route(
+                        "/version-info/{version_str}",
+                        web::get().to(get_update_info_about),
+                    ),
+            )
     })
     .workers(threads)
     .bind_uds(socket_path.as_ref())
@@ -354,6 +374,153 @@ async fn get_configuration_files(
     Ok(ConfigurationFilesResponse(resp))
 }
 
+/// Get the update status from 'thar-be-updates'
+async fn get_update_status() -> Result<UpdateStatusResponse> {
+    let output = Command::new("/usr/bin/thar-be-updates")
+        .arg("get-update-status")
+        .output()
+        .context(error::UpdateDispatcher)?;
+    if output.status.success() {
+        let resp: UpdateStatus<semver::Version> =
+            serde_json::from_slice(&output.stdout).context(error::UpdateStatusParse {
+                stdout: output.stdout,
+            })?;
+        Ok(UpdateStatusResponse(resp))
+    } else {
+        let exit_status = match output.status.code() {
+            Some(code) => code,
+            None => output.status.signal().unwrap_or(1),
+        };
+        Err(match_update_dispatcher_errors(
+            exit_status,
+            Some(output.stderr),
+        ))
+    }
+}
+
+/// Refreshes the list of updates and checks if a 'version-lock'ed update is available
+async fn refresh_update() -> Result<HttpResponse> {
+    let status = Command::new("/usr/bin/thar-be-updates")
+        .arg("refresh-update")
+        .status()
+        .context(error::UpdateDispatcher)?;
+    if status.success() {
+        Ok(HttpResponse::NoContent().finish())
+    } else {
+        let exit_status = match status.code() {
+            Some(code) => code,
+            None => status.signal().unwrap_or(1),
+        };
+        Err(match_update_dispatcher_errors(exit_status, None))
+    }
+}
+
+/// Prepares update by downloading the images to the staging partition set
+async fn prepare_update() -> Result<HttpResponse> {
+    let status = Command::new("/usr/bin/thar-be-updates")
+        .arg("prepare-update")
+        .status()
+        .context(error::UpdateDispatcher)?;
+    if status.success() {
+        Ok(HttpResponse::NoContent().finish())
+    } else {
+        let exit_status = match status.code() {
+            Some(code) => code,
+            None => status.signal().unwrap_or(1),
+        };
+        Err(match_update_dispatcher_errors(exit_status, None))
+    }
+}
+
+/// "Activates" an already staged update by bumping the priority bits on the staging partition set
+async fn activate_update() -> Result<HttpResponse> {
+    let output = Command::new("/usr/bin/thar-be-updates")
+        .arg("activate-update")
+        .output()
+        .context(error::UpdateDispatcher)?;
+    if output.status.success() {
+        Ok(HttpResponse::NoContent().finish())
+    } else {
+        let exit_status = match output.status.code() {
+            Some(code) => code,
+            None => output.status.signal().unwrap_or(1),
+        };
+        Err(match_update_dispatcher_errors(
+            exit_status,
+            Some(output.stderr),
+        ))
+    }
+}
+
+/// "Deactivates" an already activated update by rolling back actions done by 'activate-update'
+async fn deactivate_update() -> Result<HttpResponse> {
+    let output = Command::new("/usr/bin/thar-be-updates")
+        .arg("deactivate-update")
+        .output()
+        .context(error::UpdateDispatcher)?;
+    if output.status.success() {
+        Ok(HttpResponse::NoContent().finish())
+    } else {
+        let exit_status = match output.status.code() {
+            Some(code) => code,
+            None => output.status.signal().unwrap_or(1),
+        };
+        Err(match_update_dispatcher_errors(
+            exit_status,
+            Some(output.stderr),
+        ))
+    }
+}
+
+/// Gets the list of available updates and their detailed information
+async fn get_available_updates() -> Result<AvailableUpdatesResponse> {
+    let output = Command::new("/usr/bin/thar-be-updates")
+        .arg("get-available-updates")
+        .output()
+        .context(error::UpdateDispatcher)?;
+    if output.status.success() {
+        let resp: Vec<update_metadata::Update> =
+            serde_json::from_slice(&output.stdout).context(error::UpdateInfoParse {
+                stdout: output.stdout,
+            })?;
+        Ok(AvailableUpdatesResponse(resp))
+    } else {
+        let exit_status = match output.status.code() {
+            Some(code) => code,
+            None => output.status.signal().unwrap_or(1),
+        };
+        Err(match_update_dispatcher_errors(
+            exit_status,
+            Some(output.stderr),
+        ))
+    }
+}
+
+/// Gets the list of available updates and their detailed information
+async fn get_update_info_about(path: web::Path<(String,)>) -> Result<UpdateInfoResponse> {
+    let output = Command::new("/usr/bin/thar-be-updates")
+        .arg("get-update-info-about")
+        .arg(path.0.to_owned())
+        .output()
+        .context(error::UpdateDispatcher)?;
+    if output.status.success() {
+        let resp: update_metadata::Update =
+            serde_json::from_slice(&output.stdout).context(error::UpdateInfoParse {
+                stdout: output.stdout,
+            })?;
+        Ok(UpdateInfoResponse(resp))
+    } else {
+        let exit_status = match output.status.code() {
+            Some(code) => code,
+            None => output.status.signal().unwrap_or(1),
+        };
+        Err(match_update_dispatcher_errors(
+            exit_status,
+            Some(output.stderr),
+        ))
+    }
+}
+
 /// Reboots the machine
 async fn reboot() -> Result<HttpResponse> {
     debug!("Rebooting now");
@@ -378,6 +545,30 @@ async fn reboot() -> Result<HttpResponse> {
 // =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=   =^..^=
 
 // Helpers for handler methods called by the router
+
+fn match_update_dispatcher_errors(exit_status: i32, stderr: Option<Vec<u8>>) -> Error {
+    let stderr = match stderr {
+        Some(s) => s,
+        None => vec![],
+    };
+    let error = FromPrimitive::from_i32(exit_status);
+    match error {
+        Some(TbuErrorStatus::LockHeld) => {
+            error::Error::UpdateLockHeld { stderr }
+        }
+        Some(TbuErrorStatus::DisallowedCmd) => {
+            error::Error::UpdateActionNotAllowed { stderr }
+        }
+        Some(TbuErrorStatus::UpdateDoesNotExist) => {
+            error::Error::UpdateMissing { stderr }
+        }
+        Some(TbuErrorStatus::NoStagedImage) => {
+            error::Error::NoStagedImage { stderr }
+        }
+        // other errors
+        _ => error::Error::UpdateError { stderr },
+    }
+}
 
 fn comma_separated<'a>(key_name: &'static str, input: &'a str) -> Result<HashSet<&'a str>> {
     if input.is_empty() {
@@ -408,9 +599,17 @@ impl ResponseError for error::Error {
             // 404 Not Found
             MissingData { .. } => HttpResponse::NotFound(),
             ListKeys { .. } => HttpResponse::NotFound(),
+            UpdateMissing { .. } => HttpResponse::NotFound(),
+            NoStagedImage { .. } => HttpResponse::NotFound(),
 
             // 422 Unprocessable Entity
             CommitWithNoPending => HttpResponse::UnprocessableEntity(),
+
+            // 423 Locked
+            UpdateLockHeld { .. } => HttpResponse::build(StatusCode::LOCKED),
+
+            // 409 Conflict
+            UpdateActionNotAllowed { .. } => HttpResponse::Conflict(),
 
             // 500 Internal Server Error
             DataStoreLock => HttpResponse::InternalServerError(),
@@ -433,6 +632,10 @@ impl ResponseError for error::Error {
             ReleaseData { .. } => HttpResponse::InternalServerError(),
             Shutdown { .. } => HttpResponse::InternalServerError(),
             Reboot { .. } => HttpResponse::InternalServerError(),
+            UpdateDispatcher { .. } => HttpResponse::InternalServerError(),
+            UpdateError { .. } => HttpResponse::InternalServerError(),
+            UpdateStatusParse { .. } => HttpResponse::InternalServerError(),
+            UpdateInfoParse { .. } => HttpResponse::InternalServerError(),
         }
         // Include the error message in the response, and for all error types.  The Bottlerocket
         // API is only exposed locally, and only on the host filesystem and to authorized
@@ -488,6 +691,18 @@ impl_responder_for!(MetadataResponse, self, self.0);
 /// This lets us respond from our handler methods with a Services (or Result<Services>)
 struct ServicesResponse(Services);
 impl_responder_for!(ServicesResponse, self, self.0);
+
+/// This lets us respond from our handler methods with a UpdateStatus (or Result<UpdateStatus>)
+struct UpdateStatusResponse(UpdateStatus<semver::Version>);
+impl_responder_for!(UpdateStatusResponse, self, self.0);
+
+/// This lets us respond from our handler methods with a Vec (or Result<Vec>) for update information
+struct AvailableUpdatesResponse(Vec<update_metadata::Update>);
+impl_responder_for!(AvailableUpdatesResponse, self, self.0);
+
+/// This lets us respond from our handler methods with a update_metadata::Update (or Result<update_metadata::Update>)
+struct UpdateInfoResponse(update_metadata::Update);
+impl_responder_for!(UpdateInfoResponse, self, self.0);
 
 /// This lets us respond from our handler methods with a ConfigurationFiles (or
 /// Result<ConfigurationFiles>)

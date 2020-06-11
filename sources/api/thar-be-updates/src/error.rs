@@ -148,6 +148,7 @@ pub enum Error {
 }
 
 /// Map errors to specific exit codes to return to caller
+#[derive(FromPrimitive)]
 pub enum TbuErrorStatus {
     OtherError = 1,
     LockHeld = 64,

@@ -24,6 +24,8 @@ nix = "0.17.0"
 chrono = { version = "0.4.11", features = ["serde"] }
 update_metadata = { path = "../../updater/update_metadata"}
 models = { path = "../../models"}
+num-derive = "0.3.0"
+num-traits = "0.2.12"
 
 [build-dependencies]
 cargo-readme = "3.1"

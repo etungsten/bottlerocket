@@ -16,5 +16,8 @@ thar-be-updates uses a lockfile to control read/write access to the disks and th
 
 */
 
+#[macro_use]
+extern crate num_derive;
+
 pub mod error;
 pub mod status;

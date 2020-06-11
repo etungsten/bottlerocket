@@ -117,10 +117,58 @@ pub enum Error {
     #[snafu(display("Unable to send input to config applier: {}", source))]
     ConfigApplierWrite { source: io::Error },
 
+    #[snafu(display("Unable to start the update dispatcher: {} ", source))]
+    UpdateDispatcher { source: io::Error },
+
+    #[snafu(display("Update lock held: {} ", String::from_utf8_lossy(stderr)))]
+    UpdateLockHeld { stderr: Vec<u8> },
+
+    #[snafu(display("Update missing: {} ", String::from_utf8_lossy(stderr)))]
+    UpdateMissing { stderr: Vec<u8> },
+
+    #[snafu(display(
+        "No update image applied to staging partition: {} ",
+        String::from_utf8_lossy(stderr)
+    ))]
+    NoStagedImage { stderr: Vec<u8> },
+
+    #[snafu(display(
+        "Update action not allowed according to update state: {} ",
+        String::from_utf8_lossy(stderr)
+    ))]
+    UpdateActionNotAllowed { stderr: Vec<u8> },
+
+    #[snafu(display("Update dispatcher failed: {} ", String::from_utf8_lossy(stderr)))]
+    UpdateError { stderr: Vec<u8> },
+
+    #[snafu(display(
+        "Failed to parse update status from '{}': {} ",
+        String::from_utf8_lossy(stdout),
+        source
+    ))]
+    UpdateStatusParse {
+        stdout: Vec<u8>,
+        source: serde_json::Error,
+    },
+
+    #[snafu(display(
+        "Failed to parse update information from '{}': {} ",
+        String::from_utf8_lossy(stdout),
+        source
+    ))]
+    UpdateInfoParse {
+        stdout: Vec<u8>,
+        source: serde_json::Error,
+    },
+
     #[snafu(display("Unable to start shutdown: {}", source))]
     Shutdown { source: io::Error },
 
-    #[snafu(display("Failed to reboot, exit code: {}, stderr: {}", exit_code, String::from_utf8_lossy(stderr)))]
+    #[snafu(display(
+        "Failed to reboot, exit code: {}, stderr: {}",
+        exit_code,
+        String::from_utf8_lossy(stderr)
+    ))]
     Reboot { exit_code: i32, stderr: Vec<u8> },
 }
 
