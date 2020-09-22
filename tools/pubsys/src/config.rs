@@ -68,6 +68,8 @@ pub(crate) enum SigningKeyConfig {
 pub(crate) struct RepoConfig {
     pub(crate) metadata_base_url: Option<Url>,
     pub(crate) targets_url: Option<Url>,
+    pub(crate) arches: Option<Vec<String>>,
+    pub(crate) variants: Option<Vec<String>>,
 }
 
 /// How long it takes for each metadata type to expire

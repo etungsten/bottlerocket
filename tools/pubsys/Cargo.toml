@@ -16,6 +16,7 @@ indicatif = "0.15.0"
 lazy_static = "1.4"
 log = "0.4"
 parse-datetime = { path = "../../sources/parse-datetime" }
+rand = "0.7.3"
 # Need to bring in reqwest with a TLS feature so tough can support TLS repos.
 reqwest = { version = "0.10.1", default-features = false, features = ["rustls-tls", "blocking"] }
 rusoto_core = "0.45.0"

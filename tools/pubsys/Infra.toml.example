@@ -27,6 +27,18 @@ signing_keys = { default = { file = { path = "/home/user/key.pem" } } }
 # metadata_base_url = "https://example.com/metadata/"
 # targets_url = "https://example.com/targets/"
 
+# Existing arches and variants under the specific `metadata_base_url` (prefix) can be specified here.
+# arches = [ "x86_64", "aarch64" ]
+# variants = [
+#    "aws-k8s-1.15",
+#    "aws-k8s-1.16",
+#    "aws-k8s-1.17",
+#    "aws-ecs-1",
+# ]
+# When validating repositories, if this "repo" is selected, the set of repository urls are composed
+# from its set of arches and variants like so:
+#     ${metadata_base_url}/${variant}/${arch}/
+
 [aws]
 # The list of regions in which you want to publish AMIs. We register an AMI in
 # the first region and copy it to all other regions.

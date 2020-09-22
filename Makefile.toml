@@ -44,6 +44,9 @@ PUBLISH_DATA_VOLUME_SIZE = "20"
 # tools/pubsys/policies/ssm/README.md for more information.
 PUBLISH_SSM_TEMPLATES_PATH = "${BUILDSYS_ROOT_DIR}/tools/pubsys/policies/ssm/defaults.toml"
 
+# Percentage of TUF repository targets to sample and retrieve as part of the repo validation process
+VALIDATE_PERCENT_TARGETS = "100"
+
 # You can also set PUBLISH_REGIONS to override the list of regions from
 # Infra.toml for AMI and SSM commands; it's a comma-separated list like
 # "us-west-2,us-east-1".
@@ -355,6 +358,25 @@ pubsys \
    --outdir "${PUBLISH_REPO_OUTPUT_DIR}"
 
 ln -sfn "${PUBLISH_REPO_OUTPUT_DIR##*/}" "${PUBLISH_REPO_BASE_DIR}/latest"
+'''
+]
+
+[tasks.validate-repo]
+dependencies = ["publish-tools"]
+script_runner = "bash"
+script = [
+'''
+set -e
+
+export PATH="${BUILDSYS_TOOLS_DIR}/bin:${PATH}"
+
+pubsys \
+   --infra-config-path "${PUBLISH_INFRA_CONFIG_PATH}" \
+   \
+   validate-repo \
+   \
+   --repo "${PUBLISH_REPO}" \
+   --percent-target-files "${VALIDATE_PERCENT_TARGETS}"
 '''
 ]
 

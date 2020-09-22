@@ -1,6 +1,7 @@
 //! The repo module owns the 'repo' subcommand and controls the process of building a repository.
 
 mod transport;
+pub(crate) mod validate_repo;
 
 use crate::config::{InfraConfig, RepoExpirationPolicy, SigningKeyConfig};
 use crate::{friendly_version, Args};
@@ -280,6 +281,71 @@ fn repo_urls<'a>(
 
             debug!("Using metadata url: {}", metadata_url);
             return Ok(Some((metadata_url, targets_url)));
+        }
+    }
+
+    Ok(None)
+}
+
+/// If the infra config has a repo section defined for the given repo, and it has a metadata base URL and
+/// a targets URL defined, compose and returns the set of metadata URLs and their target URL using the specified arches
+/// and variants, otherwise return None.
+fn compose_repo_urls<'a>(
+    repo_key: String,
+    infra_config: &'a InfraConfig,
+) -> Result<Option<(Vec<Url>, &'a Url)>> {
+    let repo_config = infra_config
+        .repo
+        .as_ref()
+        .context(error::MissingConfig {
+            missing: "repo section",
+        })?
+        .get(&repo_key)
+        .context(error::MissingConfig {
+            missing: format!("definition for repo {}", &repo_key),
+        })?;
+
+    // Make sure all fields are set and then compose the set of metadata URLs to validate
+    if let Some(metadata_base_url) = &repo_config.metadata_base_url {
+        if let Some(targets_url) = &repo_config.targets_url {
+            if let Some(arches) = &repo_config.arches {
+                if let Some(variants) = &repo_config.variants {
+                    let base_slash = if metadata_base_url.as_str().ends_with('/') {
+                        ""
+                    } else {
+                        "/"
+                    };
+                    let metadata_urls: Vec<String> = arches
+                        .iter()
+                        .map(|arch| {
+                            variants
+                                .iter()
+                                .map(|variant| {
+                                    format!(
+                                        "{}{}{}/{}",
+                                        metadata_base_url, base_slash, variant, arch
+                                    )
+                                })
+                                .collect::<Vec<String>>()
+                        })
+                        .fold(Vec::new(), |mut acc, mut v| {
+                            acc.append(&mut v);
+                            acc
+                        });
+
+                    let metadata_urls = metadata_urls
+                        .iter()
+                        .map(|metadata_url| {
+                            Url::parse(metadata_url).context(error::ParseUrl {
+                                input: metadata_url,
+                            })
+                        })
+                        .collect::<Result<Vec<Url>>>()?;
+
+                    debug!("Composed metadata urls: {:#?}", metadata_urls);
+                    return Ok(Some((metadata_urls, targets_url)));
+                }
+            }
         }
     }
 
@@ -577,6 +643,9 @@ mod error {
             source: serde_json::Error,
         },
 
+        #[snafu(display("Repo configuration is invalid"))]
+        InvalidRepoConfig,
+
         #[snafu(display("Failed to symlink target '{}' to '{}': {}", target.display(), path.display(), source))]
         LinkTarget {
             target: PathBuf,
@@ -642,6 +711,9 @@ mod error {
             source: tough::error::Error,
         },
 
+        #[snafu(display("Validations failed for: {:#?}", list_of_urls))]
+        RepoValidate { list_of_urls: Vec<Url> },
+
         #[snafu(display("Failed to set targets expiration to {}: {}", expiration, source))]
         SetTargetsExpiration {
             expiration: DateTime<Utc>,
@@ -659,6 +731,18 @@ mod error {
             wave_policy_path: PathBuf,
             source: update_metadata::error::Error,
         },
+
+        #[snafu(display("Failed to fetch target '{}': {}", target, source))]
+        TargetFetch {
+            target: String,
+            source: tough::error::Error,
+        },
+
+        #[snafu(display("Failed to download and write target '{}': {}", target, source))]
+        TargetDownload { target: String, source: io::Error },
+
+        #[snafu(display("Missing target: {}", target))]
+        TargetMissing { target: String },
 
         #[snafu(display("Failed to create tempdir: {}", source))]
         TempDir { source: io::Error },
