@@ -4,6 +4,7 @@
 Currently implemented:
 * building repos, whether starting from an existing repo or from scratch
 * validating repos by loading them and retrieving their targets
+* checking for repository metadata expirations within specified number of days
 * registering and copying EC2 AMIs
 * Marking EC2 AMIs public (or private again)
 * setting SSM parameters based on built AMIs
@@ -48,6 +49,10 @@ fn run() -> Result<()> {
         SubCommand::Repo(ref repo_args) => repo::run(&args, &repo_args).context(error::Repo),
         SubCommand::ValidateRepo(ref validate_repo_args) => {
             repo::validate_repo::run(&args, &validate_repo_args).context(error::ValidateRepo)
+        }
+        SubCommand::CheckRepoExpirations(ref check_expirations_args) => {
+            repo::check_expirations::run(&args, &check_expirations_args)
+                .context(error::CheckExpirations)
         }
         SubCommand::Ami(ref ami_args) => {
             let mut rt = Runtime::new().context(error::Runtime)?;
@@ -103,7 +108,7 @@ struct Args {
 enum SubCommand {
     Repo(repo::RepoArgs),
     ValidateRepo(repo::validate_repo::ValidateRepoArgs),
-
+    CheckRepoExpirations(repo::check_expirations::CheckExpirationsArgs),
     Ami(aws::ami::AmiArgs),
     PublishAmi(aws::publish_ami::PublishArgs),
 
@@ -158,6 +163,9 @@ mod error {
 
         #[snafu(display("Failed to validate repo(s): {}", source))]
         ValidateRepo { source: crate::repo::Error },
+
+        #[snafu(display("{}", source))]
+        CheckExpirations { source: crate::repo::Error },
 
         #[snafu(display("Failed to create async runtime: {}", source))]
         Runtime { source: std::io::Error },

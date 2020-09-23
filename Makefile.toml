@@ -46,6 +46,8 @@ PUBLISH_SSM_TEMPLATES_PATH = "${BUILDSYS_ROOT_DIR}/tools/pubsys/policies/ssm/def
 
 # Percentage of TUF repository targets to sample and retrieve as part of the repo validation process
 VALIDATE_PERCENT_TARGETS = "100"
+# Specifies the timeframe to look for upcoming repository metadata expirations
+UPCOMING_EXPIRATIONS_IN_X_DAYS = "3"
 
 # You can also set PUBLISH_REGIONS to override the list of regions from
 # Infra.toml for AMI and SSM commands; it's a comma-separated list like
@@ -377,6 +379,25 @@ pubsys \
    \
    --repo "${PUBLISH_REPO}" \
    --percent-target-files "${VALIDATE_PERCENT_TARGETS}"
+'''
+]
+
+[tasks.check-repo-expirations]
+dependencies = ["publish-tools"]
+script_runner = "bash"
+script = [
+'''
+set -e
+
+export PATH="${BUILDSYS_TOOLS_DIR}/bin:${PATH}"
+
+pubsys \
+   --infra-config-path "${PUBLISH_INFRA_CONFIG_PATH}" \
+   \
+   check-repo-expirations \
+   \
+   --repo "${PUBLISH_REPO}" \
+   --upcoming-expirations-in "${UPCOMING_EXPIRATIONS_IN_X_DAYS}"
 '''
 ]
 

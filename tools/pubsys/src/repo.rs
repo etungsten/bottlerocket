@@ -1,5 +1,6 @@
 //! The repo module owns the 'repo' subcommand and controls the process of building a repository.
 
+pub(crate) mod check_expirations;
 mod transport;
 pub(crate) mod validate_repo;
 
@@ -683,8 +684,14 @@ mod error {
             source: tough::error::Error,
         },
 
+        #[snafu(display("Failed to check expirations for one or more repos"))]
+        RepoCheckExpirations,
+
         #[snafu(display("Repo exists at '{}' - remove it and try again", path.display()))]
         RepoExists { path: PathBuf },
+
+        #[snafu(display("Found expiring/expired metadata in one or more repos"))]
+        RepoExpirations,
 
         #[snafu(display("Could not fetch repo at '{}': {}", url, msg))]
         RepoFetch { url: Url, msg: String },
