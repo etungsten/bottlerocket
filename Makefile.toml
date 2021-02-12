@@ -201,11 +201,17 @@ script = [
 '''
 export VARIANT="${BUILDSYS_VARIANT}"
 
+# Exclude Kubernetes specific packages from being built if the variant isn't Kubernetes specific
+if ! echo "${VARIANT}" | grep -q "k8s"; then
+    EXCLUDE="--exclude static-pods pluto"
+fi
+
 cargo test \
   ${CARGO_BUILD_ARGS} \
   ${CARGO_MAKE_CARGO_ARGS} \
   --manifest-path ${BUILDSYS_SOURCES_DIR}/Cargo.toml \
-  --all
+  --all \
+  $EXCLUDE
 
 # host-ctr unit tests (go)
 ${BUILDSYS_TOOLS_DIR}/docker-go \
